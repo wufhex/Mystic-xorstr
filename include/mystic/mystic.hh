@@ -51,7 +51,7 @@
 #elif defined(SSE_AVAILABLE)
 #include <emmintrin.h>
 #else
-#define UNSUPPORTED_MSG "Unsupported Architecture, Using C Operators - Supported: (Intel SIMD AVX/SSE)"
+#define UNSUPPORTED_MSG "Unsupported Architecture, Using C Operators - Supported: (SIMD AVX/SSE)"
 #if _MSC_VER
 #pragma message(UNSUPPORTED_MSG)
 #else
