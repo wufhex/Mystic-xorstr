@@ -247,8 +247,15 @@
          * @brief Decrypt the encrypted string.
          * @return The decrypted string.
          */
-        INLINE_FUNCTION std::string DecryptString() const noexcept {
-            return __DecryptString<N>(data);
+        INLINE_FUNCTION std::string DecryptString(bool strip_null = true) const noexcept {
+            std::string result = __DecryptString<N>(data);
+
+            // Remove null terminator
+            if (strip_null && !result.empty() && result.back() == '\0') {
+                result.pop_back();
+            }
+
+            return result;
         }
 
         /**
@@ -278,6 +285,16 @@
  * @return The decrypted string.
  */
 #define MYSTIFY(str) ([] { \
+    constexpr auto encrypted = Mystic::EncryptString(str); \
+    return encrypted.DecryptString(); \
+}())
+
+ /**
+  * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
+  * @param str The input string to be encrypted and decrypted.
+  * @return The decrypted string.
+  */
+#define MYSTIFY_KEEPNULL(str) ([] { \
     constexpr auto encrypted = Mystic::EncryptString(str); \
     return encrypted.DecryptString(); \
 }())
