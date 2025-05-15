@@ -296,5 +296,5 @@
   */
 #define MYSTIFY_KEEPNULL(str) ([] { \
     constexpr auto encrypted = Mystic::EncryptString(str); \
-    return encrypted.DecryptString(); \
+    return encrypted.DecryptString(true); \
 }())
