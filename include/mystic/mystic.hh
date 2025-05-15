@@ -3,7 +3,6 @@
  * @brief A library for compile-time string encryption and decryption using constexpr computations.
  *
  * @author WolfHex
- * @date Last Updated: 5/5/2024 6:29PM
  *
  * @note This library requires a C++17 compliant compiler.
  *
