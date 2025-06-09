@@ -2,10 +2,11 @@
 	<img src="img/mystic.png" width="200" height="200">
 	<h1>Mystic</h1>
 	<p>
-		<b>A C++17 header-only library that provides compile-time string encryption and decryption using SIMD instructions</b>
+		<b>A C++17 header-only library that provides compile-time string encryption and decryption using SIMD instructions and code obfuscation.</b>
 	</p>
-	<br>
-	<br>
+	<p>
+	<b>v2 Release!</b>
+	</p>
 	<br>
 </div>
 
@@ -14,7 +15,7 @@
 * **SIMD Decryption:** Decrypts encrypted strings at runtime using SIMD operations.
 * **Vectorized Operations:** Utilizes AVX and SSE instructions to process string data.
 * **Random Key Generation:** Generates encryption keys and initialization vectors (IV) using constexpr computations based on a compile-time seed derived from the `__TIME__` macro.
-
+* **Disassembly Bloating:** Add junk code to the executable, slightly impacts performance but makes the disassembly a mess.
 ## Example
 
 Here is a simple example demonstrating string encryption and decryption using Mystic:
@@ -26,6 +27,8 @@ Here is a simple example demonstrating string encryption and decryption using My
 #include <iostream>
 
 int main() {
+	// Use MYSTIFY_BLOAT or M_APPLY_STACK_BLOAT to add bloating,
+	// DO NOT overuse them!
 	std::cout << MYSTIFY("Hello World, This is a string!") << std::endl;
 
 	return 0;
@@ -36,7 +39,7 @@ Tested on Windows using AVX and SSE instructions and Ubuntu using AVX instructio
 
 ## Support
 
-Tested on MSVC and GCC but should work correctly on most compilers. To enable AVX support you have to define `AVX_AVAILABLE`. If your CPU doesn't support AVX you can define `SSE_AVAILABLE`, if neither are defined Mystic will use C operators for decryption.
+Tested on MSVC and GCC but should work correctly on most compilers. To enable AVX support you have to define `AVX_AVAILABLE`. If your CPU doesn't support AVX you can define `SSE_AVAILABLE`.
 
 ## Results
 
@@ -46,7 +49,7 @@ Runtime Result:
 |:----------------------------------:|:-----------------------------------:|
 | Windows Executable (MSVC v143)     | ELF Executable (GCC v11)    |
 
-Part of IDA64 disassembly of `MYSTIFY("Hello World, This is a string!");` using AVX from the ELF executable
+Part of IDA64 disassembly of `MYSTIFY("Hello World, This is a string!");` using AVX from the ELF executable, WITHOUT bloating.
 
 ```asm
 endbr64
