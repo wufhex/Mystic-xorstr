@@ -40,8 +40,12 @@
 
 #pragma once
 
-#ifndef __cplusplus
-#error "C compiler detected! Please use a C++ compiler."
+#if defined(_MSC_VER)
+#if !defined(__cplusplus) || (__cplusplus < 201703L)
+#error "C++17 or higher is required. Use /std:c++17 and /Zc:__cplusplus with MSVC."
+#endif
+#else
+static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 #endif
 
 #include <array>
