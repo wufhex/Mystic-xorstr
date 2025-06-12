@@ -252,13 +252,6 @@ namespace Mystic {
                 vec = _mm_xor_si128(vec, _mm_set1_epi64x(i ^ N));
             }
             volatile uint64_t sink = __LoadFromRegister(data[0]);
-#else
-            constexpr int SafeN = (N > 8 ? 8 : N);
-            volatile uint64_t data[SafeN] = {};
-            for (int i = 0; i < SafeN; ++i) {
-                data[i] = ((i * 0xB9C47E1032568ADFULL) ^ 0x2E5F9A8C7B0143D6ULL) + SafeN;
-            }
-            volatile uint64_t sink = __LoadFromRegister(data[0]);
 #endif
             x = static_cast<int>(__LoadFromRegister(sink));
             (void)x;
@@ -287,16 +280,6 @@ namespace Mystic {
                 _mm_store_si128(reinterpret_cast<__m128i*>(&arr[i]), v);
             }
             volatile uint64_t sink = __LoadFromRegister(arr[3]);
-#else
-            constexpr int SafeN = (N > 8 ? 8 : N);
-            volatile uint64_t arr[SafeN] = {};
-                                    //    _ NICE
-            uint64_t acc = 0xF3F3CACDE384F69ULL;
-            for (int i = 0; i < SafeN; ++i) {
-                acc ^= (i * 0x1EF4AULL);
-                arr[i] = acc + i;
-            }
-            volatile uint64_t sink = __LoadFromRegister(arr[SafeN - 1]);
 #endif
             x = static_cast<int>(__LoadFromRegister(sink));
             (void)x;
@@ -334,18 +317,6 @@ namespace Mystic {
                     v = _mm_and_si128(v, _mm_set1_epi64x(~i));
                 }
                 _mm_store_si128(reinterpret_cast<__m128i*>(&buf[i]), v);
-                toggle = !toggle;
-            }
-            volatile uint64_t sink = __LoadFromRegister(buf[0]);
-#else
-            constexpr int SafeN = (N > 8 ? 8 : N);
-            volatile uint64_t buf[SafeN] = {};
-            bool toggle = false;
-            for (int i = 0; i < SafeN; ++i) {
-                if (toggle)
-                    buf[i] = (i * 0xABCD1234ULL) ^ 0xDEADBEEFULL;
-                else
-                    buf[i] = (~(i * 0x1234ABCDULL)) + 0xCAFEBABEULL;
                 toggle = !toggle;
             }
             volatile uint64_t sink = __LoadFromRegister(buf[0]);
