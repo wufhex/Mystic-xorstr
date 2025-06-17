@@ -42,7 +42,7 @@ vmovq   xmm5, rdx
 mov     rbp, rsp
 push    r15
 push    r14
-push    r13![PE Image](./img/runtime_pe.png)
+push    r13
 xor     r13d, r13d
 push    r12
 push    rbx
