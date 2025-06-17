@@ -1,20 +1,30 @@
 /**
  * @file mystic.hh
- * @brief A library for compile-time string encryption and decryption using constexpr computations.
+ * @brief Compile-time string encryption/decryption library with advanced obfuscation and bloat features.
  *
  * @author wufhex
  *
- * @note This library requires a C++17 compliant compiler.
+ * @note Requires a C++17 compliant compiler.
  *
- * This library provides functionality for encrypting and decrypting strings at compile-time using constexpr computations.
- * It includes a template-based random number generator for key generation and a XOR-based encryption scheme.
+ * This library provides compile-time string encryption and decryption using constexpr computations,
+ * supporting both AVX and SSE architectures. It features a template-based random number generator
+ * for key/IV generation, and a multi-layered XOR-based encryption scheme.
  *
- * The encryption scheme involves dividing the string into 8-byte chunks, performing XOR operations with the keys and IV,
- * and then converting the encrypted chunks back into characters using AVX/SSE instructions.
- * 
- * It also adds junk code to mess with the disassembly and make it extremely nested to hide the 
- * decryption logic inside the code. Do not overuse MYSTIFY_BLOAT since it can heavily slow down 
- * performance and executable size, again if overused.
+ * New features and improvements:
+ * - Multiple AVX/SSE-based logic bloat functions.
+ * - Stack bloat and control flow flattening with opaque predicates and fake call indirection.
+ * - Standard library bloat via dummy string/vector operations.
+ * - Compile-time random selection of bloat variants for each use.
+ * - Macros for easy application of stack bloat and decompiler crash logic.
+ * - Improved compile-time key/IV generation using __TIME__.
+ * - Decompiler crash stack logic for anti-reverse engineering.
+ * - Configurable via macros (M_ENABLE_BLOAT, M_ENABLE_BIGSTACK).
+ *
+ * The encryption divides strings into 8-byte chunks, applies XOR with generated keys and IV,
+ * and decrypts using AVX/SSE SIMD instructions for performance and obfuscation.
+ *
+ * The library is designed to make reverse engineering and static analysis significantly harder
+ * by injecting junk code, complex control flow, and unpredictable bloat.
  *
  * --- MIT License ---
  *
@@ -76,7 +86,7 @@ static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 // ---------------VERSION----------------
 
 #ifndef M_VER
-#define M_VER_MAJ 2
+#define M_VER_MAJ 3
 #define M_VER_MIN 0
 #define M_VER_PTC 0
 
@@ -94,6 +104,20 @@ static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 #else
 #define INLINE_FUNCTION __attribute__((always_inline)) inline
 #endif
+
+/**
+ * @brief Macro to apply stack bloat, can be used outside the mystic library.
+ */
+#define M_APPLY_STACK_BLOAT \
+    Mystic::Obfuscation::Apply<Mystic::Obfuscation::GetSeed()>()
+
+
+/**
+ * @brief Macro to apply big stack. This macro will trigger a failure in the decompilation of some decompilers,
+ * (ex. IDA) mostly when generating pseudo-C code.
+ */
+#define M_APPLY_BIG_STACK \
+    Mystic::Obfuscation::DecompilerCrashStack<Mystic::Obfuscation::GetSeed()>()
 
 /**
  * @namespace Mystic
@@ -116,6 +140,16 @@ namespace Mystic {
         volatile uint64_t reg = value;
         return reg;
 #endif
+    }
+    
+    // m_check is compared to 0, it'll always be true
+    // because n^n is always 0. This will prevent the junk code from
+    // executing at runtime but will still bloat the stack, because
+    // the compiler will not optimize it out.
+    template<int N>
+    INLINE_FUNCTION bool __AlwaysTrue() {
+        volatile int n = N;
+        return (__LoadFromRegister(n) ^ __LoadFromRegister(n)) == 0;
     }
 
     /**
@@ -169,64 +203,101 @@ namespace Mystic {
     namespace Obfuscation {
 
         /**
-         * @brief Compile-time random key generator struct.
-         * @tparam Seed The seed value for random generation.
-         */
-        template<uint64_t Seed>
-        struct OSeed {
-            static constexpr int key = Mystic::Random::Random<Seed, 42>::value % 1000;
-        };
-
-        /**
          * @brief Generate a pseudo-random seed from the current compile time.
+         * Once generated the seed gets cached to make the compilation faster.
          * @return A uint64_t value representing the seed.
          */
+        constexpr uint64_t ParseSeedFromTime(const char* t) noexcept {
+            return (t[0] - '0') * 12000ULL +
+                   (t[1] - '0') * 1600ULL  +
+                   (t[3] - '0') * 300ULL   +
+                   (t[4] - '0') * 30ULL    +
+                   (t[6] - '0') * 5ULL     +
+                   (t[7] - '0');
+        }
+
+        constexpr uint64_t _cached_seed = ParseSeedFromTime(__TIME__);
         INLINE_FUNCTION constexpr uint64_t GetSeed() noexcept {
-            return (__TIME__[0] - '0') * 12000 + (__TIME__[1] - '0') * 1600 +
-                   (__TIME__[3] - '0') * 300   + (__TIME__[4] - '0') * 30   +
-                   (__TIME__[6] - '0') * 5     + (__TIME__[7] - '0');
+            return _cached_seed;
         }
 
         /**
-         * @brief Adds stack bloat by allocating and initializing a small volatile buffer.
-         * @tparam N The (compile-time) size parameter for the buffer, capped at 8.
+         * @brief Adds significant stack bloat and complex control flow to hinder static analysis and decompilation.
+         * This function creates a large, obfuscated control-flow graph consisting of 10 distinct labeled blocks,
+         * each containing volatile operations and nested conditional statements designed to prevent compiler optimizations.
+         * @tparam N Compile-time integer param used to initialize x.
          */
         template<int N>
         INLINE_FUNCTION void StackBloat() noexcept {
-            constexpr int SafeN = (N > 8 ? 8 : N);
-            volatile uint64_t stackBuf[SafeN] = {};
-            for (int i = 0; i < SafeN; ++i) {
-                uint64_t val = (i * 0xE0FCEEU) ^ 0xDF3D4AEFU;
-                stackBuf[i]  = __LoadFromRegister(val);
-            }
-            (void)stackBuf;
-        }
+            volatile int      x       = N;
+            volatile uint64_t dummy   = GetSeed();
 
-        /**
-         * @brief Adds control flow bloat by performing dummy volatile computations in a loop.
-         * @tparam N The number of iterations for the dummy computation.
-         */
-        template<int N>
-        INLINE_FUNCTION void ControlFlowBloat() noexcept {
-            volatile int x = 0;
-            for (int i = 0; i < N; ++i) {
-                int val = ((i ^ x) & 1) ? (x + i) : (x - i);
-                x = static_cast<int>(__LoadFromRegister(val));
-            }
-        }
+            // Fake call indirection system to confuse call graph
+            auto confuse_branch = [](int v) -> int {
+                volatile uint64_t scramble = (v * (GetSeed() | 0x7F2E3D1C5A9B8F07UL)) ^ (GetSeed() | 0xC4D3E2F1A0B9C8D7ULL);
+                return scramble % 21;
+            };
 
-        /**
-         * @brief Adds lightweight logic noise using volatile variables and dummy register loads.
-         * @tparam N The parameter to influence the dummy computation.
-         */
-        template<int N>
-        INLINE_FUNCTION void LogicNoise() noexcept {
-            volatile int      x = 0;
-            volatile uint64_t a = 0xE7000FULL;
-            volatile uint64_t b = 0x1DDFA0ULL;
-            volatile uint64_t c = (a ^ b) + N;
-            x = static_cast<int>(__LoadFromRegister(c));
-            (void)x;
+            // Multi-hop jumps
+            switch (confuse_branch(x)) {
+            #define DISPATCH(i) \
+                case i: goto hop1_##i; \
+                hop1_##i: goto hop2_##i; \
+                hop2_##i: goto label##i;
+
+            // MOD: Dispatch
+            DISPATCH(0)   DISPATCH(1)   DISPATCH(2)   DISPATCH(3)   DISPATCH(4)
+            DISPATCH(5)
+
+            #undef DISPATCH
+            default: goto end;
+            }
+
+            // Label implementation — fake math, volatile ops, lambdas
+            #define LABEL(i) \
+                label##i: { \
+                    volatile uint64_t x = (uint64_t)(i * 2); \
+                    volatile uint64_t y = x + 1; \
+                    volatile uint64_t z = y + 3; \
+                    for (int j = 0; j < 5; ++j) { \
+                        volatile uint64_t a = GetSeed() ^ (x + j); \
+                        if ((a & 1) == 0) { \
+                            if ((a ^ y) % 3 == 0) { \
+                                if (((a + z) & 7) != 4) { \
+                                    dummy ^= a & y; \
+                                    dummy ^= __LoadFromRegister(a); \
+                                } else { \
+                                    dummy ^= x | z; \
+                                } \
+                            } else { \
+                                dummy ^= y | a; \
+                            } \
+                        } else { \
+                            if ((a | x) % 5 == 1) { \
+                                if (((z ^ a) & 0xF) == 2) { \
+                                    dummy ^= z & y; \
+                                } else { \
+                                    dummy ^= x | x; \
+                                } \
+                            } else { \
+                                dummy ^= a | z; \
+                            } \
+                        } \
+                    } \
+                    \
+                    dummy ^= __LoadFromRegister(x); \
+                    dummy ^= __LoadFromRegister(y); \
+                    dummy ^= __LoadFromRegister(z); \
+                    goto end; \
+                }
+
+            // MOD: Label
+            LABEL(0)   LABEL(1)   LABEL(2)   LABEL(3)   LABEL(4)
+            LABEL(5)
+
+            #undef LABEL
+        end:;
+            (void)dummy;
         }
 
         /**
@@ -235,10 +306,12 @@ namespace Mystic {
          */
         template<int N>
         INLINE_FUNCTION void LogicBloatAVXSSEA() noexcept {
-            volatile int x = 0;
+            volatile  int      x    = 0;
+            constexpr uint64_t val1 = GetSeed() ^ 0x6D24B3A58F7E1C90ULL;
+
 #if defined(AVX_AVAILABLE)
             alignas(32) uint64_t data[8] = {};
-            __m256i vec = _mm256_set1_epi64x(0x6D24B3A58F7E1C90ULL);
+            __m256i vec = _mm256_set1_epi64x(val1);
             for (int i = 0; i < 8; i += 4) {
                 _mm256_store_si256(reinterpret_cast<__m256i*>(&data[i]), vec);
                 vec = _mm256_xor_si256(vec, _mm256_set1_epi64x(i ^ N));
@@ -246,7 +319,7 @@ namespace Mystic {
             volatile uint64_t sink = __LoadFromRegister(data[0]);
 #elif defined(SSE_AVAILABLE)
             alignas(16) uint64_t data[4] = {};
-            __m128i vec = _mm_set1_epi64x(0xF1297C4DEB3A5F08ULL);
+            __m128i vec = _mm_set1_epi64x(val1);
             for (int i = 0; i < 4; i += 2) {
                 _mm_store_si128(reinterpret_cast<__m128i*>(&data[i]), vec);
                 vec = _mm_xor_si128(vec, _mm_set1_epi64x(i ^ N));
@@ -263,10 +336,12 @@ namespace Mystic {
          */
         template<int N>
         INLINE_FUNCTION void LogicBloatAVXSSEB() noexcept {
-            volatile int x = 0;
+            volatile  int      x    = 0;
+            constexpr uint64_t val1 = GetSeed() ^ 0x8A3E6B59247D1C0FULL;
+
 #if defined(AVX_AVAILABLE)
             alignas(32) uint64_t arr[8] = {};
-            __m256i v = _mm256_set1_epi64x(0x8A3E6B59247D1C0FULL);
+            __m256i v = _mm256_set1_epi64x(val1);
             for (int i = 0; i < 8; i += 4) {
                 v = _mm256_add_epi64(v, _mm256_set1_epi64x(i));
                 _mm256_store_si256(reinterpret_cast<__m256i*>(&arr[i]), v);
@@ -274,7 +349,7 @@ namespace Mystic {
             volatile uint64_t sink = __LoadFromRegister(arr[7]);
 #elif defined(SSE_AVAILABLE)
             alignas(16) uint64_t arr[4] = {};
-            __m128i v = _mm_set1_epi64x(0xA10F9D2B7C43856EULL);
+            __m128i v = _mm_set1_epi64x(val1);
             for (int i = 0; i < 4; i += 2) {
                 v = _mm_add_epi64(v, _mm_set1_epi64x(i));
                 _mm_store_si128(reinterpret_cast<__m128i*>(&arr[i]), v);
@@ -389,16 +464,40 @@ namespace Mystic {
          */
         template<int Key>
         INLINE_FUNCTION void Apply() noexcept {
-            constexpr int stackSize = (Key % 24) + 12;
-            constexpr int cfSize    = (Key % 13) + 5;
+            if (__AlwaysTrue<Key>()) return;
 
+            constexpr int stack_size = (Key % 24) + 12;
+            constexpr uint64_t val1  = GetSeed() & 0xFEA2C4F4830ULL;
+
+            StackBloat<stack_size>();
             BloatRandomAVXSSE<Key>();
-            StackBloat<stackSize>();
-            ControlFlowBloat<cfSize>();
+            StackBloat<stack_size>();
             StdBloat();
-            LogicNoise<Key>();
+            StackBloat<stack_size>();
             BloatRandomAVXSSE<Key>();
-            __LoadFromRegister(0xFEA2C4F4830ULL);
+            StackBloat<stack_size>();
+
+            __LoadFromRegister(val1);
+        }
+
+        /**
+         * This function introduces a small amount of stack bloat and constructs an invalid function pointer cast.
+         * This leads to decompilers failing to decompile the part of code where this function is called.
+         *
+         * @tparam Value Any numeric value.
+         */
+        template<int Value>
+        INLINE_FUNCTION void DecompilerCrashStack() {
+            if (__AlwaysTrue<Value>()) return;
+            volatile uint64_t crash_buffer[2];
+
+            using Fn = int(*)(int);
+            Fn unreachable_fn = reinterpret_cast<Fn>(
+                crash_buffer + ((Value % 0x400000) + 0x4000000)
+            );
+            __LoadFromRegister(
+                reinterpret_cast<uint64_t>(unreachable_fn)
+            );
         }
     } // namespace Obfuscation
 
@@ -440,6 +539,10 @@ namespace Mystic {
      */
     template<size_t N>
     INLINE_FUNCTION std::string __DecryptString(const std::array<uint64_t, (N + 7) / 8>& encrypted) noexcept {
+#ifdef M_ENABLE_BIGSTACK
+        M_APPLY_BIG_STACK;
+#endif
+        
         std::string decrypted;
 #if defined(AVX_AVAILABLE)
         constexpr int ChunkSize = 32;
@@ -456,6 +559,10 @@ namespace Mystic {
             __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&encrypted[i / 8]));
             chunk = _mm256_xor_si256(chunk, key1);
 
+#ifdef M_ENABLE_BLOAT
+            M_APPLY_STACK_BLOAT;
+#endif
+
             __m256i k2_ls_3 = _mm256_slli_epi64(key2, 3);
             __m256i k1_ls_6 = _mm256_slli_epi64(key1, 6);
             __m256i kl3_kr6 = _mm256_and_si256(k2_ls_3, k1_ls_6);
@@ -463,6 +570,10 @@ namespace Mystic {
 
             __m256i k1_ls_i = _mm256_xor_si256(iv, _mm256_set1_epi64x(0xFC11ULL));
             chunk = _mm256_xor_si256(chunk, k1_ls_i);
+
+#ifdef M_ENABLE_BLOAT
+            M_APPLY_STACK_BLOAT;
+#endif
 
             alignas(ChunkSize) uint8_t extractedBytes[ChunkSize];
             _mm256_store_si256(reinterpret_cast<__m256i*>(extractedBytes), chunk);
@@ -480,6 +591,10 @@ namespace Mystic {
             __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&encrypted[i / 8]));
             chunk = _mm_xor_si128(chunk, key1);
 
+#ifdef M_ENABLE_BLOAT
+            M_APPLY_STACK_BLOAT;
+#endif
+
             __m128i k2_ls_3 = _mm_slli_epi64(key2, 3);
             __m128i k1_ls_6 = _mm_slli_epi64(key1, 6);
             __m128i kl3_kr6 = _mm_and_si128(k2_ls_3, k1_ls_6);
@@ -487,6 +602,10 @@ namespace Mystic {
 
             __m128i k1_ls_i = _mm_xor_si128(iv, _mm_set1_epi64x(0xFC11ULL));
             chunk = _mm_xor_si128(chunk, k1_ls_i);
+
+#ifdef M_ENABLE_BLOAT
+            M_APPLY_STACK_BLOAT;
+#endif
 
             alignas(ChunkSize) uint8_t extractedBytes[ChunkSize];
             _mm_store_si128(reinterpret_cast<__m128i*>(extractedBytes), chunk);
@@ -496,6 +615,7 @@ namespace Mystic {
             }
         }
 #endif
+
         return decrypted;
     }
 
@@ -544,36 +664,7 @@ namespace Mystic {
 } // namespace Mystic
 
 /**
- * @brief Macro to apply stack bloat, can be used outside the mystic library.
- */
-#define M_APPLY_STACK_BLOAT Mystic::Obfuscation::Apply<Mystic::Obfuscation::OSeed<Mystic::Obfuscation::GetSeed()>::key>()
-
-/**
  * @brief Macro to encrypt and decrypt a string at compile-time.
- * @param str The input string to be encrypted and decrypted.
- * @return The decrypted string.
- */
-#define MYSTIFY_BLOAT(str) ([] { \
-    M_APPLY_STACK_BLOAT; \
-    constexpr auto encrypted = Mystic::EncryptString(str);   \
-    M_APPLY_STACK_BLOAT; \
-    return encrypted.DecryptString();                        \
-}())
-
- /**
-  * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
-  * @param str The input string to be encrypted and decrypted.
-  * @return The decrypted string.
-  */
-#define MYSTIFY_KEEPNULL_BLOAT(str) ([] { \
-    M_APPLY_STACK_BLOAT; \
-    constexpr auto encrypted = Mystic::EncryptString(str);   \
-    M_APPLY_STACK_BLOAT; \
-    return encrypted.DecryptString(true);                    \
-}())
-
-/**
- * @brief Macro to encrypt and decrypt a string at compile-time without stack bloat.
  * @param str The input string to be encrypted and decrypted.
  * @return The decrypted string.
  */
@@ -583,11 +674,27 @@ namespace Mystic {
 }())
 
 /**
- * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator, without stack bloat.
+ * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
  * @param str The input string to be encrypted and decrypted.
  * @return The decrypted string.
  */
 #define MYSTIFY_KEEPNULL(str) ([] { \
     constexpr auto encrypted = Mystic::EncryptString(str);   \
-    return encrypted.DecryptString(true);                    \
+    return encrypted.DecryptString(false);                   \
 }())
+
+/**
+ * @deprecated Use MYSTIFY
+ * @brief Macro to encrypt and decrypt a string at compile-time.
+ * @param str The input string to be encrypted and decrypted.
+ * @return The decrypted string.
+ */
+#define MYSTIFY_BLOAT(str)          MYSTIFY(str)
+
+/**
+ * @deprecated Use MYSTIFY_KEEPNULL
+ * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
+ * @param str The input string to be encrypted and decrypted.
+ * @return The decrypted string.
+ */
+#define MYSTIFY_BLOAT_KEEPNULL(str) MYSTIFY_KEEPNULL(str)

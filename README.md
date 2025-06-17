@@ -5,7 +5,7 @@
 		<b>A C++17 header-only library that provides compile-time string encryption and decryption using SIMD instructions and code obfuscation.</b>
 	</p>
 	<p>
-	<b>v2 Release!</b>
+	<b>v3 Release!</b>
 	</p>
 	<br>
 </div>
@@ -15,27 +15,9 @@
 * **SIMD Decryption:** Decrypts encrypted strings at runtime using SIMD operations.
 * **Vectorized Operations:** Utilizes AVX and SSE instructions to process string data.
 * **Random Key Generation:** Generates encryption keys and initialization vectors (IV) using constexpr computations based on a compile-time seed derived from the `__TIME__` macro.
-* **Disassembly Bloating:** Add junk code to the executable, slightly impacts performance but makes the disassembly a mess.
+* **Disassembly Bloating:** Add junk code to the executable, slightly impacts compile performance but makes the disassembly a mess.
 ## Example
-
-Here is a simple example demonstrating string encryption and decryption using Mystic:
-
-```cpp
-#define AVX_AVAILABLE // Tells Mystic that your CPU is compatible with AVX instructions
-
-#include <mystic.hh>
-#include <iostream>
-
-int main() {
-	// Use MYSTIFY_BLOAT or M_APPLY_STACK_BLOAT to add bloating,
-	// DO NOT overuse them!
-	std::cout << MYSTIFY("Hello World, This is a string!") << std::endl;
-
-	return 0;
-}
-```
-
-Tested on Windows using AVX and SSE instructions and Ubuntu using AVX instructions
+Check [this](./tests/example.cpp) source file to see a full example and docs!
 
 ## Support
 
@@ -43,7 +25,7 @@ Tested on MSVC and GCC but should work correctly on most compilers. To enable AV
 
 ## Results
 
-Runtime Result:
+### Runtime Result:
 
 | ![PE Image](./img/runtime_pe.png) | ![ELF Image](./img/runtime_elf.png) |
 |:----------------------------------:|:-----------------------------------:|
@@ -60,7 +42,7 @@ vmovq   xmm5, rdx
 mov     rbp, rsp
 push    r15
 push    r14
-push    r13
+push    r13![PE Image](./img/runtime_pe.png)
 xor     r13d, r13d
 push    r12
 push    rbx
@@ -95,8 +77,35 @@ vzeroupper
 nop     dword ptr [rax+00h]
 ```
 
+### Obfuscated Disassembly:
+This is what the compiled obfuscated version of the Mystic test looks like in Ida Pro (MSVC compiled, PE64 executable, Release).
+
+| ![Image](./img/ida_graph_msvc_a.png) | ![Image](./img/ida_graph_msvc_b.png) |
+|:----------------------------------:|:-----------------------------------:|
+| `main` function    | `__DecryptString` function (very hard to find) |
+
+
+And none of the injected code gets executed at runtime! So once compiled, your program will be almost as quick as non-obfuscated.
+
+The obfuscated code can be injected by definining `M_ENABLE_BLOAT` to enable it for all Mystic decryptions, and/or it can be manually injected into any function by calling the `M_APPLY_STACK_BLOAT` macro. Be aware that over-using it will cause large binaries and slow compile times since everything gets injected at compile-time.
+
+Let's see how GCC compiles the `main` function, (GCC compiled, ELF64 executable, Release):
+<div align="center">
+<img src="img/ida_graph_gcc_a.png">
+</div>
+
+### "Decompilation failure: Stack frame too big":
+Mystic also attempts to cause a failure in the decompiler by constructing an invalid function pointer cast. Since the code is skipped at runtime, it won't crash the application at runtime, but it will cause some decompilers to fail.
+
+One of them is IDA Pro, this is what happens when we try to generate C pseudocode:
+<div align="center">
+<img src="img/ida_bigstack_fail.png">
+</div>
+
+This can be triggered by defining `M_ENABLE_BIGSTACK` to enable it for every Mystic decryptions, and/or it can be manually enabled for a function using the `M_APPLY_BIG_STACK` macro. 
+
 ## Related Projects
-Similar libraries i found helpful
+Similar libraries i found helpful:
 
 * [JustasMasiulis's xorstr](https://github.com/JustasMasiulis/xorstr)
 * [qis's xorstr](https://github.com/qis/xorstr)
