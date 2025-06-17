@@ -23,7 +23,7 @@ int main() {
     // 1. Add/remove DISPATCH and LABEL macros in mystic.hpp. Search for `MOD:` to find them.
     // 2. Add/remove StackBloat calls in mystic.hpp.
     M_APPLY_STACK_BLOAT;
-    // Same for M_APPLY_BIG_STACK, using it once per function is enough to crash the stack frame in decompilers.
+    // Same for M_APPLY_BIG_STACK, using it once per function is enough to cause the "Stack frame too big" error in decompilers.
     // If M_ENABLE_BIGSTACK is defined, MYSTIFY will automatically implement it in each decryption.
     M_APPLY_BIG_STACK;
     std::cout << MYSTIFY("Today is a beautiful day.") << std::endl;
