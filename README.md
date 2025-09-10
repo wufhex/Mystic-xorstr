@@ -16,6 +16,7 @@
 * **Vectorized Operations:** Utilizes AVX and SSE instructions to process string data.
 * **Random Key Generation:** Generates encryption keys and initialization vectors (IV) using constexpr computations based on a compile-time seed derived from the `__TIME__` macro.
 * **Disassembly Bloating:** Add junk code to the executable, slightly impacts compile performance but makes the disassembly a mess.
+* **Minimal Environment Support:** Mystic supports CRT-less or minimal C++ environments by defining _MYSTIC_MINIMAL, as of now string encryption is disabled when this mode is enabled but compiler dependent features like junk code injection and stack bloating still work, but must be manually inserted via M_APPLY_STACK_BLOAT and/or M_APPLY_BIG_STACK.
 ## Example
 Check [this](./tests/example.cpp) source file to see a full example and docs!
 
