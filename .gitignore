@@ -1,2 +1,6 @@
 /.vscode
+/.cache
+/.idea
 /build
+/tests/cmake-build-debug
+/tests/cmake-build-release

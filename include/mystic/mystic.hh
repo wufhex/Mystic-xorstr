@@ -11,6 +11,8 @@
  * for key/IV generation, and a multi-layered XOR-based encryption scheme.
  *
  * New features and improvements:
+ * - Added a _MYSTIC_MINIMAL definition that strips any CRT related code, CRT-less string encryption is not implemented 
+ *   as of today but it keeps features like bloating available for minimal environments like embedded systems.
  * - Multiple AVX/SSE-based logic bloat functions.
  * - Stack bloat and control flow flattening with opaque predicates and fake call indirection.
  * - Standard library bloat via dummy string/vector operations.
@@ -58,6 +60,12 @@
 static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 #endif
 
+#ifdef _MYSTIC_MINIMAL
+#undef AVX_AVAILABLE
+#undef SSE_AVAILABLE
+#endif
+
+#ifndef _MYSTIC_MINIMAL
 #include <array>
 #include <string>
 #include <sstream>
@@ -65,8 +73,14 @@ static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 #include <utility>
 #include <functional>
 #include <iomanip>
+#endif
 #include <cstdint>
 
+#ifdef _MYSTIC_MINIMAL
+using size_t = uint64_t;
+#endif
+
+#ifndef _MYSTIC_MINIMAL
 #if defined(AVX_AVAILABLE)
 #include <immintrin.h>
 #elif defined(SSE_AVAILABLE)
@@ -80,14 +94,15 @@ static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
 // Mystic v1 still has support for them tho I can't guarantee they'll work properly.
 // -------------------------------------------------------------------------------
 
-#error "Unsupported architecture, Please define either AVX_AVAILABLE or SSE_AVAILABLE."
+#error "Unsupported architecture, Please define either AVX_AVAILABLE or SSE_AVAILABLE, or define _MYSTIC_MINIMAL to strip CRT dependent functions."
+#endif
 #endif
 
 // ---------------VERSION----------------
 
 #ifndef M_VER
 #define M_VER_MAJ 3
-#define M_VER_MIN 0
+#define M_VER_MIN 1
 #define M_VER_PTC 0
 
 #define M_VER ( (M_VER_MAJ << 16) \
@@ -125,7 +140,6 @@ static_assert(__cplusplus >= 201703L, "C++17 or higher is required");
  * @note Yeah... good luck.
  */
 namespace Mystic {
-   
     /**
      * @brief Load a value from register using inline assembly (GCC) or volatile variable (MSVC).
      * @note This function is used to avoid compiler optimization.
@@ -181,6 +195,7 @@ namespace Mystic {
          * @brief Generate encryption keys and initialization vector (IV) using compile-time seed from time.
          * @return An array of three uint64_t values representing keys and IV.
          */
+#ifndef _MYSTIC_MINIMAL
         INLINE_FUNCTION constexpr auto GenerateKeysAndIV() noexcept {
             constexpr uint64_t seed = [] {
                 return (__TIME__[0] - '0') * 36000 + (__TIME__[1] - '0') * 3600 +
@@ -194,6 +209,7 @@ namespace Mystic {
 
                 return std::array<uint64_t, 3>{ key1, key2, iv };
         }
+#endif
     }
 
     /**
@@ -304,6 +320,7 @@ namespace Mystic {
          * @brief Adds AVX/SSE-based logic bloat using SIMD instructions and dummy register loads (variant A).
          * @tparam N The parameter to influence the dummy computation (not buffer size).
          */
+#ifndef _MYSTIC_MINIMAL
         template<int N>
         INLINE_FUNCTION void LogicBloatAVXSSEA() noexcept {
             volatile  int      x    = 0;
@@ -430,6 +447,7 @@ namespace Mystic {
 
             (void)dummy;
         }
+#endif
 
         /**
          * @brief Helper to select a random bloat function at compile time.
@@ -445,6 +463,7 @@ namespace Mystic {
          * @brief Randomly calls one of the AVX/SSE bloat functions based on the compile-time key.
          * @tparam Key The key used for selection.
          */
+#ifndef _MYSTIC_MINIMAL
         template<int Key>
         INLINE_FUNCTION void BloatRandomAVXSSE() noexcept {
             constexpr int choice = RandomSelector<Key>();
@@ -457,6 +476,7 @@ namespace Mystic {
                 LogicBloatAVXSSEC<(Key % 24) + 8>();
             }
         }
+#endif
 
         /**
          * @brief Applies a sequence of bloat functions for obfuscation.
@@ -470,11 +490,17 @@ namespace Mystic {
             constexpr uint64_t val1  = GetSeed() & 0xFEA2C4F4830ULL;
 
             StackBloat<stack_size>();
+#ifndef _MYSTIC_MINIMAL
             BloatRandomAVXSSE<Key>();
+#endif
             StackBloat<stack_size>();
+#ifndef _MYSTIC_MINIMAL
             StdBloat();
+#endif
             StackBloat<stack_size>();
+#ifndef _MYSTIC_MINIMAL
             BloatRandomAVXSSE<Key>();
+#endif
             StackBloat<stack_size>();
 
             __LoadFromRegister(val1);
@@ -501,6 +527,7 @@ namespace Mystic {
         }
     } // namespace Obfuscation
 
+#ifndef _MYSTIC_MINIMAL
     constexpr auto _keys_and_iv = Random::GenerateKeysAndIV();
 
     /**
@@ -661,8 +688,10 @@ namespace Mystic {
     INLINE_FUNCTION constexpr auto EncryptString(const char(&str)[N]) noexcept {
         return EncryptedString<N>{__EncryptString(str)};
     }
+#endif
 } // namespace Mystic
 
+#ifndef _MYSTIC_MINIMAL
 /**
  * @brief Macro to encrypt and decrypt a string at compile-time.
  * @param str The input string to be encrypted and decrypted.
@@ -698,3 +727,4 @@ namespace Mystic {
  * @return The decrypted string.
  */
 #define MYSTIFY_BLOAT_KEEPNULL(str) MYSTIFY_KEEPNULL(str)
+#endif
