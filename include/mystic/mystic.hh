@@ -536,23 +536,24 @@ namespace Mystic {
      * @param str The input string to be encrypted.
      * @return An array of uint64_t values representing the encrypted string.
      */
-    template<size_t N>
-    INLINE_FUNCTION constexpr auto __EncryptString(const char(&str)[N]) noexcept {
-        std::array<uint64_t, (N + 7) / 8> encrypted{};
+    template<typename CharT, size_t N>
+    INLINE_FUNCTION constexpr auto __EncryptString(const CharT(&str)[N]) noexcept {
+        constexpr size_t ChunkSize = 8 / sizeof(CharT);
+        std::array<uint64_t, (N + ChunkSize - 1) / ChunkSize> encrypted{};
 
         constexpr uint64_t key1 = _keys_and_iv.data()[0];
         constexpr uint64_t key2 = _keys_and_iv.data()[1];
         constexpr uint64_t iv   = _keys_and_iv.data()[2];
 
-        for (size_t i = 0; i < N; i += 8) {
+        for (size_t i = 0; i < N; i += ChunkSize) {
             uint64_t chunk = 0;
-            for (int j = 0; j < 8 && i + j < N; ++j) {
-                chunk |= static_cast<uint64_t>(str[i + j]) << (j * 8);
+            for (size_t j = 0; j < ChunkSize && i + j < N; ++j) { 
+                chunk |= static_cast<uint64_t>(str[i + j]) << (j * sizeof(CharT) * 8);
             }
 
             chunk ^= (key1) ^ ((key2 << 3) & (key1 << 6)) ^ (iv ^ 0xFC11ULL);
 
-            encrypted[i / 8] = chunk;
+            encrypted[i / ChunkSize] = chunk;
         }
 
         return encrypted;
@@ -564,26 +565,30 @@ namespace Mystic {
      * @param encrypted The array of encrypted uint64_t values.
      * @return The decrypted string.
      */
-    template<size_t N>
-    INLINE_FUNCTION std::string __DecryptString(const std::array<uint64_t, (N + 7) / 8>& encrypted) noexcept {
+    template<typename CharT, size_t N>
+    INLINE_FUNCTION std::basic_string<CharT> __DecryptString(const std::array<uint64_t, (N + (8 / sizeof(CharT)) - 1) / (8 / sizeof(CharT))>& encrypted) noexcept {
 #ifdef M_ENABLE_BIGSTACK
         M_APPLY_BIG_STACK;
 #endif
-        
-        std::string decrypted;
+
+        std::basic_string<CharT> decrypted;
+
+        constexpr size_t BitsPerChar = sizeof(CharT) * 8;
+        constexpr size_t CharsPerU64 = 8 / sizeof(CharT);
 #if defined(AVX_AVAILABLE)
-        constexpr int ChunkSize = 32;
+        constexpr size_t U64sPerSIMD = 4; // 256 bits / 64 bits per uint64
 #elif defined(SSE_AVAILABLE)
-        constexpr int ChunkSize = 16;
+        constexpr size_t U64sPerSIMD = 2; // 128 bits / 64 bits per uint64
 #endif
+        constexpr size_t CharsPerSIMD = CharsPerU64 * U64sPerSIMD;
 
 #if defined(AVX_AVAILABLE)
         __m256i key1 = _mm256_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[0]));
         __m256i key2 = _mm256_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[1]));
         __m256i iv   = _mm256_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[2]));
 
-        for (size_t i = 0; i < N; i += ChunkSize) {
-            __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&encrypted[i / 8]));
+        for (size_t i = 0; i < N; i += CharsPerSIMD) {
+            __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&encrypted[i / CharsPerU64]));
             chunk = _mm256_xor_si256(chunk, key1);
 
 #ifdef M_ENABLE_BLOAT
@@ -602,20 +607,27 @@ namespace Mystic {
             M_APPLY_STACK_BLOAT;
 #endif
 
-            alignas(ChunkSize) uint8_t extractedBytes[ChunkSize];
-            _mm256_store_si256(reinterpret_cast<__m256i*>(extractedBytes), chunk);
+            alignas(32) uint64_t out[U64sPerSIMD];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(out), chunk);
 
-            for (int j = 0; j < ChunkSize && i + j < N; ++j) {
-                decrypted += static_cast<char>(extractedBytes[j]);
+            for (size_t u = 0; u < U64sPerSIMD; ++u) {
+                uint64_t v = out[u];
+                for (size_t c = 0; c < CharsPerU64; ++c) {
+                    size_t idx = i + u * CharsPerU64 + c;
+                    if (idx < N) {
+                        decrypted += static_cast<CharT>((v >> (c * BitsPerChar)) & ((1ULL << BitsPerChar) - 1));
+                    }
+                }
             }
         }
+
 #elif defined(SSE_AVAILABLE)
         __m128i key1 = _mm_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[0]));
         __m128i key2 = _mm_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[1]));
         __m128i iv   = _mm_set1_epi64x(__LoadFromRegister(_keys_and_iv.data()[2]));
 
-        for (size_t i = 0; i < N; i += ChunkSize) {
-            __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&encrypted[i / 8]));
+        for (size_t i = 0; i < N; i += CharsPerSIMD) {
+            __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&encrypted[i / CharsPerU64]));
             chunk = _mm_xor_si128(chunk, key1);
 
 #ifdef M_ENABLE_BLOAT
@@ -634,14 +646,20 @@ namespace Mystic {
             M_APPLY_STACK_BLOAT;
 #endif
 
-            alignas(ChunkSize) uint8_t extractedBytes[ChunkSize];
-            _mm_store_si128(reinterpret_cast<__m128i*>(extractedBytes), chunk);
+            alignas(16) uint64_t out[U64sPerSIMD];
+            _mm_store_si128(reinterpret_cast<__m128i*>(out), chunk);
 
-            for (int j = 0; j < ChunkSize && i + j < N; ++j) {
-                decrypted += static_cast<char>(extractedBytes[j]);
+            for (size_t u = 0; u < U64sPerSIMD; ++u) {
+                uint64_t v = out[u];
+                for (size_t c = 0; c < CharsPerU64; ++c) {
+                    size_t idx = i + u * CharsPerU64 + c;
+                    if (idx < N) {
+                        decrypted += static_cast<CharT>((v >> (c * BitsPerChar)) & ((1ULL << BitsPerChar) - 1));
+                    }
+                }
             }
         }
-#endif
+#endif // SSE_AVAILABLE / AVX_AVAILABLE
 
         return decrypted;
     }
@@ -650,19 +668,19 @@ namespace Mystic {
      * @brief A struct representing an encrypted string.
      * @tparam N The size of the encrypted data array.
      */
-    template<size_t N>
+    template<typename CharT, size_t N>
     struct EncryptedString {
-        std::array<uint64_t, (N + 7) / 8> data;
+        constexpr static size_t ChunkSize = 8 / sizeof(CharT);
+        std::array<uint64_t, (N + ChunkSize - 1) / ChunkSize> data;
 
         /**
          * @brief Decrypt the encrypted string.
          * @return The decrypted string.
          */
-        INLINE_FUNCTION std::string DecryptString(bool strip_null = true) const noexcept {
-            std::string result = __DecryptString<N>(data);
+        INLINE_FUNCTION std::basic_string<CharT> DecryptString(bool strip_null = true) const noexcept {
+            std::basic_string<CharT> result = __DecryptString<CharT, N>(data);
 
-            // Remove null terminator
-            if (strip_null && !result.empty() && result.back() == '\0') {
+            if (strip_null && !result.empty() && result.back() == CharT('\0')) {
                 result.pop_back();
             }
 
@@ -673,7 +691,7 @@ namespace Mystic {
          * @brief Get the encrypted data array.
          * @return Const reference to the encrypted data array.
          */
-        INLINE_FUNCTION const std::array<uint64_t, (N + 7) / 8>& GetEncryptedData() const noexcept {
+        INLINE_FUNCTION const std::array<uint64_t, (N + ChunkSize - 1) / ChunkSize>& GetEncryptedData() const noexcept {
             return data;
         }
     };
@@ -684,47 +702,61 @@ namespace Mystic {
      * @param str The input string to be encrypted.
      * @return An EncryptedString object containing the encrypted data.
      */
-    template<size_t N>
-    INLINE_FUNCTION constexpr auto EncryptString(const char(&str)[N]) noexcept {
-        return EncryptedString<N>{__EncryptString(str)};
+    template<typename CharT, size_t N>
+    INLINE_FUNCTION constexpr auto EncryptString(const CharT(&str)[N]) noexcept {
+        return EncryptedString<CharT, N>{__EncryptString<CharT, N>(str)};
     }
 #endif
 } // namespace Mystic
 
 #ifndef _MYSTIC_MINIMAL
 /**
- * @brief Macro to encrypt and decrypt a string at compile-time.
+ * @brief Macro to encrypt and decrypt a char string at compile-time.
  * @param str The input string to be encrypted and decrypted.
- * @return The decrypted string.
+ * @return The decrypted std::string.
  */
 #define MYSTIFY(str) ([] { \
-    constexpr auto encrypted = Mystic::EncryptString(str);   \
-    return encrypted.DecryptString();                        \
+    constexpr auto encrypted = Mystic::EncryptString(str); \
+    return encrypted.DecryptString(); \
 }())
 
 /**
- * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
+ * @brief Macro to encrypt and decrypt a char string at compile-time keeping the null terminator.
  * @param str The input string to be encrypted and decrypted.
- * @return The decrypted string.
+ * @return The decrypted std::string including '\0'.
  */
 #define MYSTIFY_KEEPNULL(str) ([] { \
-    constexpr auto encrypted = Mystic::EncryptString(str);   \
-    return encrypted.DecryptString(false);                   \
+    constexpr auto encrypted = Mystic::EncryptString(str); \
+    return encrypted.DecryptString(false); \
+}())
+
+/**
+ * @brief Macro to encrypt and decrypt a wchar_t string at compile-time.
+ * @param wstr The input wide string to be encrypted and decrypted.
+ * @return The decrypted std::wstring.
+ */
+#define MYSTIFYW(wstr) ([] { \
+    constexpr auto encrypted = Mystic::EncryptString(wstr); \
+    return encrypted.DecryptString(); \
+}())
+
+/**
+ * @brief Macro to encrypt and decrypt a wchar_t string at compile-time keeping the null terminator.
+ * @param wstr The input wide string to be encrypted and decrypted.
+ * @return The decrypted std::wstring including L'\0'.
+ */
+#define MYSTIFYW_KEEPNULL(wstr) ([] { \
+    constexpr auto encrypted = Mystic::EncryptString(wstr); \
+    return encrypted.DecryptString(false); \
 }())
 
 /**
  * @deprecated Use MYSTIFY
- * @brief Macro to encrypt and decrypt a string at compile-time.
- * @param str The input string to be encrypted and decrypted.
- * @return The decrypted string.
  */
 #define MYSTIFY_BLOAT(str)          MYSTIFY(str)
 
 /**
  * @deprecated Use MYSTIFY_KEEPNULL
- * @brief Macro to encrypt and decrypt a string at compile-time keeping the null terminator.
- * @param str The input string to be encrypted and decrypted.
- * @return The decrypted string.
  */
 #define MYSTIFY_BLOAT_KEEPNULL(str) MYSTIFY_KEEPNULL(str)
 #endif
