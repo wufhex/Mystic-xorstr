@@ -102,7 +102,7 @@ using size_t = uint64_t;
 
 #ifndef M_VER
 #define M_VER_MAJ 3
-#define M_VER_MIN 1
+#define M_VER_MIN 2
 #define M_VER_PTC 0
 
 #define M_VER ( (M_VER_MAJ << 16) \
